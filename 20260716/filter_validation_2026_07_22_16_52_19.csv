@@ -1,0 +1,8 @@
+Sample,Shape,ROI_px,Threshold,Mean_MedianOFF,Mean_MedianON,Mean_Delta,Std_MedianOFF,Std_MedianON,ValidN_MedianOFF,ValidN_MedianON,ValidN_Delta,Corrected_pct
+Image: image.png,Median kernel: 3,Diff thresh: 5,,,,,,,,,,
+Sample 1,rect,120x120,166.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.1111
+Sample 2,rect,120x120,166.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0069
+Sample 3,rect,120x120,166.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.4028
+Sample 4,rect,120x120,166.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.5
+Sample 5,rect,120x120,166.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.2986
+Sample 6,rect,120x120,166.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.8125
