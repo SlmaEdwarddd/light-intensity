@@ -6,6 +6,7 @@
 - 手動或自動放置 ROI(實心亮點 / 方框輪廓兩種偵測模式),ROI 座標可存檔、載入沿用
 - 固定 ROI:樣本座標固定時,ROI 位置與大小鎖定,開程式自動載入
 - 灰塵與反光濾除:Median Filter(3×3)、White Top-hat 去亮反光(只處理 ROI,K 值可調,主畫面可標紅被去除的像素)
+- 亮度不均校正:背景估計(2 次曲面擬合 ROI 以外的背景)或平場參考(拍均勻空白片),除以照明分佈
 - Threshold、門檻預覽、灰階分佈與對比拉伸(僅影響顯示)、比例尺
 - 每秒輸出各 ROI 平均值;CSV 附統計(t > 10 s 的 Mean / Std / CV / Max / Min)
 - 存 CSV 後可輸入濃度(自訂或對半稀釋),輸出濃度-光強度線性圖與 R²(可選 X 軸取 log)
@@ -16,7 +17,8 @@
 
 | 資料夾 | 內容 |
 |---|---|
-| `20261022/20261022.py` | **最新版**。固定 ROI(座標與大小鎖定、開程式自動載入);去反光改成只處理 ROI,門檻改用 median + K·1.4826·MAD(K 預設 4)。測試:`test_20261022.py`、`deglint_compare.png` |
+| `20261026/20261026.py` | **最新版**。亮度不均校正:背景估計 / 平場參考(`calibration/flat_field.npz`),暗場值在進階設定;CSV 記錄校正方式與各 ROI 增益。測試:`test_20261026.py`(含已知答案的合成影像)、`illum_compare.png` |
+| `20261022/20261022.py` | 固定 ROI(座標與大小鎖定、開程式自動載入);去反光改成只處理 ROI,門檻改用 median + K·1.4826·MAD(K 預設 4)。測試:`test_20261022.py`、`deglint_compare.png` |
 | `20260928/20261006.py` | 主面板只留相機設定、ROI、對比、濾波;其餘移到「進階設定」視窗 |
 | `20260928/20261002.py` | 精簡版(移除 Threshold、Median、比例尺、FPS、門檻預覽);CSV 另存新檔、ROI 座標檔選擇 |
 | `20260928/20260928.py` | 新增量測後製作線性圖、ROI 座標記錄 |
@@ -31,7 +33,7 @@
 
 ```bash
 conda activate light_intensity
-python 20261022/20261022.py
+python 20261026/20261026.py
 ```
 
 需要 `opencv-python`、`numpy`、`pillow`、`matplotlib`;接相機另需 XIMEA API(`ximea`)或 `pylablib`(Thorlabs)。
