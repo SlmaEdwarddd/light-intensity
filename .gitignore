@@ -11,6 +11,9 @@ pack/
 __pycache__/
 *.pyc
 
+# 分析中間檔(lod_analysis.py 會重新產生,每份約 30 MB)
+_vis_*.pkl
+
 # 編輯器設定
 .vscode/
 

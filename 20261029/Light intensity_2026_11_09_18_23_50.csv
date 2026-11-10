@@ -1,0 +1,17 @@
+Time (s),Sample 1,Sample 2,Sample 3,Sample 4
+Median filter: OFF  |  De-glint: ON (K=4.0),,,,
+Scale: Not set,,,,
+"Illumination correction: background fit (poly deg 2, 2 exclude region(s)), dark=0",,,,
+Blank subtraction: OFF,,,,
+Illum gain (per ROI),0.9207,0.9992,1.0518,1.0395
+WARNING: recording <= 10s - stats computed from ALL data points,,,,
+Mean (t>10s),27.63,38.29,45.31,27.63
+Std Dev (t>10s),0.0,0.0,0.0,0.0
+CV (%) (t>10s),0.0,0.0,0.0,0.0
+Max (t>10s),27.63,38.29,45.31,27.63
+Min (t>10s),27.63,38.29,45.31,27.63
+0,27.63,38.29,45.31,27.63
+1,27.63,38.29,45.31,27.63
+2,27.63,38.29,45.31,27.63
+3,27.63,38.29,45.31,27.63
+4,27.63,38.29,45.31,27.63
