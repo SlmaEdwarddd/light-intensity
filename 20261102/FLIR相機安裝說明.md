@@ -34,6 +34,7 @@
 | `Cannot import PySpin: No module named 'PySpin'` | 用到舊版的 exe | 換成新版的 `light_intensity.exe` |
 | `找不到 FLIR 相機 / No FLIR camera found` | 程式正常,但沒偵測到相機 | 先確認 SpinView 已關閉;再用 SpinView 檢查看不看得到相機 |
 | SpinView 也看不到相機 | 線、USB 孔或驅動的問題 | 見下方檢查清單 |
+| SDK 安裝程式按「是」之後沒有畫面,工作管理員裡只剩 `Teledyne Log Server` | Windows 系統檔損毀,安裝畫面一出現就當掉(遇過一次:`D3D12Core.dll`,例外代碼 `0xc0000006`) | 用系統管理員身分開命令提示字元,執行 `sfc /scannow`,完成後重開機再安裝。仍失敗就到事件檢視器查看錯誤內容 |
 
 **SpinView 看不到相機時的檢查清單:**
 
@@ -49,3 +50,4 @@
 - 錯誤視窗的截圖(要看得到完整文字)
 - 程式後面那個黑色視窗的截圖
 - SpinView 看不看得到相機
+- 安裝程式打不開時:事件檢視器(`Win + R` 輸入 `eventvwr`)→「Windows 記錄」→「應用程式」裡,該時間點錯誤的截圖
