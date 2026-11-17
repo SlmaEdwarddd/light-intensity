@@ -50,6 +50,7 @@ fps_value = 0
 #   "XIMEA_MC050"  → XIMEA MC050MG-SY
 #   "XIMEA_MC023"  → XIMEA MC023MG-SY
 #   "THORLABS"     → Thorlabs
+#   "FLIR_BFS"     → Teledyne FLIR Blackfly S BFS-U3-31S4(Spinnaker / PySpin)
 CAMERA_TYPE = None
 cam = None
 xi_img = None
@@ -1883,6 +1884,22 @@ def apply_gain_and_exposure_to_camera(gain_val, exposure_ms):
         except Exception as e:
             print(f"[camera] Thorlabs set_exposure failed: {e}")
 
+    elif CAMERA_TYPE == "FLIR_BFS":
+        # Blackfly S 擷取中可直接改曝光 / 增益,不需停止;camera_lock 與讀圖互斥
+        with camera_lock:
+            try:
+                g = cam.set_gain(float(gain_val))
+                ok_gain = True
+                print(f"[camera] FLIR gain = {g:.2f} dB")
+            except Exception as e:
+                print(f"[camera] FLIR set_gain failed: {e}")
+            try:
+                t = cam.set_exposure_ms(float(exposure_ms))
+                ok_exp = True
+                print(f"[camera] FLIR exposure = {t:.3f} ms")
+            except Exception as e:
+                print(f"[camera] FLIR set_exposure failed: {e}")
+
     return ok_gain, ok_exp
 
 def on_gain_exposure_change(event=None):
@@ -3417,6 +3434,148 @@ def init_camera_ximea_mc023():
     bit_depth = 10
 
 
+FLIR_BFS_DEFAULT_EXPOSURE_MS = 30.0   # ponytail: 初始曝光 30 ms、增益 0 dB;依螢光強度在主面板調整
+
+
+class BlackflyCam:
+    """Teledyne FLIR Blackfly S(BFS-U3-31S4,Spinnaker / PySpin)的最小包裝。
+    初始化成適合定量量測的狀態:8-bit 灰階、手動曝光 / 增益、關閉 gamma、不受幀率限制(可長曝光)。
+    需要安裝 Spinnaker SDK 與對應 Python 版本的 PySpin(spinnaker_python)。"""
+
+    def __init__(self):
+        try:
+            import PySpin
+        except Exception as e:
+            raise RuntimeError("無法載入 PySpin:請安裝 Teledyne FLIR Spinnaker SDK 與對應 Python 版本的 "
+                               f"PySpin(spinnaker_python)。\nCannot import PySpin: {e}")
+        self.ps = PySpin
+        self.system = PySpin.System.GetInstance()
+        self.cam_list = self.system.GetCameras()
+        if self.cam_list.GetSize() == 0:
+            self.cam_list.Clear(); self.system.ReleaseInstance()
+            raise RuntimeError("找不到 FLIR 相機,請確認 USB3 連線,以及 SpinView 看得到相機。\nNo FLIR camera found.")
+        self.cam = self.cam_list.GetByIndex(0)
+        self.cam.Init()
+        self.timeout_ms = 1000
+        c = self.cam
+        self.info = {k: self._get(lambda n=n: getattr(c, n).GetValue(), "?")
+                     for k, n in (("model", "DeviceModelName"), ("serial", "DeviceSerialNumber"),
+                                  ("firmware", "DeviceFirmwareVersion"))}
+        self._try(lambda: c.AcquisitionMode.SetValue(PySpin.AcquisitionMode_Continuous))
+        # 單色機型用 Mono8;彩色機型(BFS-U3-31S4C)改 BGR8,讀圖時再轉灰階
+        if not self._try(lambda: c.PixelFormat.SetValue(PySpin.PixelFormat_Mono8)):
+            self._try(lambda: c.PixelFormat.SetValue(PySpin.PixelFormat_BGR8))
+        self._try(lambda: c.ExposureAuto.SetValue(PySpin.ExposureAuto_Off))
+        self._try(lambda: c.GainAuto.SetValue(PySpin.GainAuto_Off))
+        self._try(lambda: c.GammaEnable.SetValue(False))                  # 量測要亮度與光強度成線性
+        self._try(lambda: c.AcquisitionFrameRateEnable.SetValue(False))   # 幀率跟著曝光走,允許長曝光
+        c.BeginAcquisition()
+        self.acquiring = True
+
+    @staticmethod
+    def _try(fn):
+        try:
+            fn(); return True
+        except Exception as e:
+            print(f"[camera] FLIR setting skipped: {e}")
+            return False
+
+    @staticmethod
+    def _get(fn, default):
+        try:
+            return fn()
+        except Exception:
+            return default
+
+    def set_exposure_ms(self, ms):
+        """設定曝光(ms),夾在相機允許範圍內;回傳實際值(ms)。"""
+        node = self.cam.ExposureTime                                      # 單位 µs
+        us = min(max(float(ms) * 1000.0, node.GetMin()), node.GetMax())
+        node.SetValue(us)
+        self.timeout_ms = int(us / 1000.0) + 1000                         # 讀圖等待要比曝光長
+        return node.GetValue() / 1000.0
+
+    def set_gain(self, db):
+        node = self.cam.Gain
+        node.SetValue(min(max(float(db), node.GetMin()), node.GetMax()))
+        return node.GetValue()
+
+    def read(self):
+        """讀一張影像 → 8-bit 灰階 ndarray;不完整的影像回傳 None。"""
+        img = self.cam.GetNextImage(self.timeout_ms)
+        try:
+            if img.IsIncomplete():
+                return None
+            arr = np.array(img.GetNDArray(), copy=True)
+        finally:
+            img.Release()
+        if arr.ndim == 3:
+            arr = cv2.cvtColor(arr, cv2.COLOR_BGR2GRAY)
+        if arr.dtype != np.uint8:
+            arr = (arr >> 8).astype(np.uint8)
+        return arr
+
+    def close(self):
+        if not hasattr(self, "cam"):                                      # 已關閉過(關視窗與程式結束都會呼叫)
+            return
+        try:
+            if self.acquiring:
+                self.cam.EndAcquisition()
+                self.acquiring = False
+        except Exception:
+            pass
+        try:
+            self.cam.DeInit()
+        except Exception:
+            pass
+        del self.cam                                                      # PySpin:先放掉相機參照才能釋放 System
+        try:
+            self.cam_list.Clear()
+            self.system.ReleaseInstance()
+        except Exception:
+            pass
+
+
+def init_camera_flir_bfs():
+    """FLIR Blackfly S BFS-U3-31S4 初始化(在 worker 執行緒執行,不直接碰 Tk)。"""
+    global cam, orig_w, orig_h, bit_depth, user_exposure_ms
+
+    cam = BlackflyCam()
+    try:
+        user_exposure_ms = cam.set_exposure_ms(FLIR_BFS_DEFAULT_EXPOSURE_MS)
+        cam.set_gain(0.0)
+    except Exception as e:
+        print(f"[camera] FLIR initial exposure/gain failed: {e}")
+        user_exposure_ms = FLIR_BFS_DEFAULT_EXPOSURE_MS
+
+    frame = None
+    for attempt in range(5):
+        try:
+            frame = cam.read()
+            if frame is not None:
+                break
+        except Exception as e:
+            print(f"[FLIR init] read attempt {attempt+1} failed: {e}")
+            time.sleep(0.3)
+    if frame is None:
+        cam.close(); cam = None
+        raise RuntimeError("無法讀取 FLIR Blackfly S 影像 / Cannot get FLIR image")
+
+    orig_h, orig_w = frame.shape[:2]
+    update_letterbox(orig_w, orig_h)
+    bit_depth = 8
+    exp = user_exposure_ms
+
+    def _ui():                                  # 回主執行緒更新 Tk
+        exposure_entry.delete(0, tk.END); exposure_entry.insert(0, f"{exp:g}")
+        gain_entry.delete(0, tk.END); gain_entry.insert(0, "0.0")
+        info = cam.info if cam is not None else {}
+        append_log(f"[FLIR] {info.get('model', '?')}  S/N {info.get('serial', '?')}  "
+                   f"FW {info.get('firmware', '?')}  {orig_w}x{orig_h}")
+        cam_apply_status.config(text=f"FLIR {info.get('model', '')}  FW {info.get('firmware', '')}", fg="#888888")
+    root.after(0, _ui)
+
+
 def init_camera_thorlabs():
     """Thorlabs 初始化"""
     global cam, orig_w, orig_h, bit_depth, user_exposure_ms
@@ -3617,6 +3776,7 @@ def ask_camera_choice_and_init():
         ("XIMEA MC050MG-SY", "XIMEA_MC050"),
         ("XIMEA MC023MG-SY", "XIMEA_MC023"),
         ("THORLABS",          "THORLABS"),
+        ("FLIR Blackfly S BFS-U3-31S4", "FLIR_BFS"),
         ("匯入圖片 / Import Image (無相機)", "IMAGE"),
     ]:
         tk.Radiobutton(choice_win, text=label, variable=var, value=value,
@@ -3662,6 +3822,8 @@ def ask_camera_choice_and_init():
                     init_camera_ximea_mc050()
                 elif choice == "XIMEA_MC023":
                     init_camera_ximea_mc023()
+                elif choice == "FLIR_BFS":
+                    init_camera_flir_bfs()
                 else:
                     init_camera_thorlabs()
             except Exception as e:
@@ -3703,6 +3865,10 @@ def on_close():
                 except Exception: pass
                 try: cam.close()
                 except Exception: pass
+            elif CAMERA_TYPE == "FLIR_BFS" and cam is not None:
+                time.sleep(0.2)                    # 讓讀圖執行緒看到 running=False 後再關相機
+                with camera_lock:
+                    cam.close()
         except Exception:
             pass
         root.destroy()
@@ -4207,6 +4373,50 @@ def video_loop_thorlabs():
         valid_frame_count += 1
 
 
+def video_loop_flir():
+    """FLIR Blackfly S:BlackflyCam.read() 已回傳 8-bit 灰階。"""
+    global current_frame, valid_frame_count, last_sec_time, fps_value, cam
+
+    next_due = time.monotonic()
+    fail_count = 0
+
+    while running:
+        try:
+            with camera_lock:                      # 與套用曝光 / 增益、關閉相機互斥
+                if not running:
+                    break
+                frame = cam.read()
+        except Exception:
+            fail_count += 1
+            time.sleep(0.05)
+            if fail_count == 20:
+                root.after(0, append_log, "WARNING: camera read failing / 相機讀取失敗 — 請檢查連線")
+            continue
+        else:
+            fail_count = 0
+        if frame is None:                          # 不完整的影像,丟掉
+            continue
+
+        now_sec = int(time.time())
+        if now_sec != last_sec_time:
+            fps_value         = valid_frame_count
+            valid_frame_count = 0
+            last_sec_time     = now_sec
+
+        if user_fps_val is not None:
+            now = time.monotonic()
+            if now < next_due:
+                continue
+            next_due = max(now, next_due + 1.0 / float(user_fps_val))
+
+        if frame.ndim == 3 and frame.shape[2] == 3:
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+        if not _publish_frame(frame):
+            continue
+        valid_frame_count += 1
+
+
 def video_loop_image():
     """匯入圖片模式：持續把靜態影像餵進 current_frame，
     讓所有既有的 ROI/threshold/median/分析邏輯不需改動即可運作。"""
@@ -4319,6 +4529,12 @@ def apply_defaults_on_restart_camera():
                     else:
                         cam.set_exposure(30.0 / 1e3)
                 except Exception: pass
+            if CAMERA_TYPE == "FLIR_BFS":
+                with camera_lock:
+                    try:
+                        cam.set_gain(0.0)
+                        cam.set_exposure_ms(FLIR_BFS_DEFAULT_EXPOSURE_MS)
+                    except Exception: pass
     except Exception:
         pass
 
@@ -4344,6 +4560,8 @@ def start_system():
         threading.Thread(target=video_loop_ximea, daemon=True).start()
     elif CAMERA_TYPE == "THORLABS":
         threading.Thread(target=video_loop_thorlabs, daemon=True).start()
+    elif CAMERA_TYPE == "FLIR_BFS":
+        threading.Thread(target=video_loop_flir, daemon=True).start()
     else:  # IMAGE
         setup_ui_for_image_mode()
         threading.Thread(target=video_loop_image, daemon=True).start()
@@ -4371,6 +4589,9 @@ try:
         except Exception: pass
         try: cam.close()
         except Exception: pass
+    elif CAMERA_TYPE == "FLIR_BFS" and cam is not None:
+        with camera_lock:
+            cam.close()
 except Exception:
     pass
 

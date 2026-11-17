@@ -3196,6 +3196,8 @@ slide_A    = None                   # 目前使用的仿射(校正 + 自動微�
 
 def _load_slide_layout(quiet=False):
     path = os.path.join(APP_DIR, SLIDE_LAYOUT_FILE)
+    if not os.path.exists(path):                    # 只給 exe 時:改用打包在 exe 裡的佈局(exe 旁邊有檔案就優先用它)
+        path = os.path.join(getattr(sys, "_MEIPASS", APP_DIR), SLIDE_LAYOUT_FILE)
     try:
         with open(path, encoding="utf-8") as f:
             lay = json.load(f)
