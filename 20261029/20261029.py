@@ -449,7 +449,7 @@ fps_input_entry.grid(row=0, column=1, sticky='w', padx=2, pady=6)
 fps_display_label = tk.Label(fps_frame, text="Current FPS: 0", anchor="w",
                               font=SETTINGS_ITEM_FONT, bg="#2B2B2B", fg="#00BFFF")
 fps_display_label.grid(row=1, column=0, columnspan=2, sticky='w', padx=2, pady=(6, 2))
-fps_input_entry.insert(0, "50")
+fps_input_entry.insert(0, "30")
 
 # Decimal places
 dec_frame = tk.LabelFrame(adv_frame, text="顯示精度 / Display Precision",
@@ -2163,7 +2163,7 @@ def on_start():
 
             exposure_entry.delete(0, tk.END)
             exposure_entry.insert(0, str(user_exposure_ms))
-            fps_input_entry.insert(0, "50")   # 上面清空了 FPS;相機模式不補回的話 Start 會一直是灰的
+            fps_input_entry.insert(0, "30")   # 上面清空了 FPS;相機模式不補回的話 Start 會一直是灰的
 
             apply_defaults_on_restart_camera()
 
