@@ -2163,6 +2163,7 @@ def on_start():
 
             exposure_entry.delete(0, tk.END)
             exposure_entry.insert(0, str(user_exposure_ms))
+            fps_input_entry.insert(0, "50")   # 上面清空了 FPS;相機模式不補回的話 Start 會一直是灰的
 
             apply_defaults_on_restart_camera()
 
@@ -4020,13 +4021,32 @@ def save_plot_image(fig):
     fig.savefig(filename)
     messagebox.showinfo("儲存成功 / Saved", f"圖表已儲存為 {filename}\nPlot saved as {filename}")
 
+_plot_pending = False
+
+def request_plot_update():
+    """分析執行緒每秒呼叫;上一次重畫還沒做完就不再排隊,避免 Tk 事件堆積造成畫面卡死。"""
+    global _plot_pending
+    if not _plot_pending:
+        _plot_pending = True
+        root.after(0, update_plots)
+
 def update_plots():
+    global _plot_pending
+    _plot_pending = False
+    n = len(timestamps)
+    # ponytail: 圖最多畫約 1500 點(CSV 仍是每秒完整資料);全畫的話量越久重畫越慢,約 6000 秒後畫面卡住
+    step = max(1, n // 1500)
     for i, values in enumerate(roi_data):
         ax = plot_axes[i]
-        ax.clear()
-        ax.plot(timestamps, values, marker='o')
-        ax.set_title(f"Light intensity of Sample {i+1}")
-        ax.set_xlabel("Time (s)"); ax.set_ylabel("Intensity"); ax.grid(True)
+        t, v = timestamps[:n:step], values[:n:step]
+        if not ax.lines:
+            ax.plot(t, v, marker='o')
+            ax.set_title(f"Light intensity of Sample {i+1}")
+            ax.set_xlabel("Time (s)"); ax.set_ylabel("Intensity"); ax.grid(True)
+        else:
+            ax.lines[0].set_data(t, v)
+            ax.lines[0].set_marker('o' if step == 1 else '')
+            ax.relim(); ax.autoscale_view()
         ax.figure.tight_layout()
         plot_canvases[i].draw()
 
@@ -4502,7 +4522,7 @@ def analysis_loop():
 
                 log_message += f"At {elapsed} sec, Sample {i+1}{roi_size_str} = {rounded}{mf_str}\n"
             timestamps.append(elapsed)
-            root.after(0, update_plots)
+            request_plot_update()
             root.after(0, append_log, log_message.strip())
             last_logged_sec = elapsed
 

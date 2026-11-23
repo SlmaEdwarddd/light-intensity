@@ -1088,7 +1088,7 @@ def show_illum_preview():
         y1, y2, x1, x2 = _roi_slice(gray.shape, r)
         m0, _ = compute_roi_mean(patch, cmask, gs)
         m1, _ = compute_roi_mean(patch, cmask, gs, gain[y1:y2, x1:x2])
-        lines.append(f"S{i+1:<2}  x{facs[i]:.3f}   {m0:8.2f} -> {m1:8.2f}")
+        lines.append(f"{roi_label(i, True):<3}  x{facs[i]:.3f}   {m0:8.2f} -> {m1:8.2f}")
         for im in (a, imap, b):
             cv2.rectangle(im, (x1 - x0, y1 - y0), (x2 - x0, y2 - y0), (255, 215, 0), 1)
         cv2.putText(imap, f"x{facs[i]:.2f}", (x1 - x0, max(12, y1 - y0 - 4)),
@@ -1208,7 +1208,7 @@ def _ask_flat_source():
                                      selectcolor="#2B2B2B", activebackground="#2B2B2B",
                                      activeforeground="#00BFFF", anchor="w", font=RADIO_FONT)
     for i in range(len(rois)):                                    # 每列 4 個 ROI
-        rb(f"S{i + 1} 是 blank", str(i)).grid(row=i // 4, column=i % 4, sticky="w", padx=4)
+        rb(f"{roi_label(i, True)} 是 blank", str(i)).grid(row=i // 4, column=i % 4, sticky="w", padx=4)
     nrow = (len(rois) + 3) // 4
     rb("空白玻片:擷取整個視野當平場(原本的方式)", "slide").grid(row=nrow, column=0, columnspan=4, sticky="w", padx=4, pady=(6, 0))
     if blank_idx is not None:
@@ -1386,7 +1386,7 @@ def show_median_preview():
             for pim in (p_before, p_after, p_diff):
                 pim[cmask == 0] = (pim[cmask == 0] * 0.25).astype(np.uint8)
 
-        blk = tk.LabelFrame(inner, text=f"Sample {i+1}", font=("Arial", 12, "bold"),
+        blk = tk.LabelFrame(inner, text=f"{roi_label(i)}", font=("Arial", 12, "bold"),
                             bg="#2B2B2B", fg="#00BFFF", padx=8, pady=6)
         blk.pack(fill="x", padx=10, pady=6)
 
@@ -1661,7 +1661,7 @@ def show_deglint_preview():
     for k, (i, panels, pct, mb, ma, means) in enumerate(blocks):
         col = tk.Frame(grid, bg="#2B2B2B", bd=1, relief="solid")
         col.grid(row=k // ncol, column=k % ncol, padx=4, pady=4, sticky="n")
-        tk.Label(col, text=f"Sample {i+1}", font=("Arial", 11, "bold"),
+        tk.Label(col, text=f"{roi_label(i)}", font=("Arial", 11, "bold"),
                  bg="#2B2B2B", fg="#00BFFF").pack(pady=(3, 2))
         for cap, im in panels:
             tk.Label(col, text=cap, font=("Arial", 8), bg="#2B2B2B", fg="#AAAAAA").pack()
@@ -2077,7 +2077,7 @@ def start_button_handler():
         return
     if illum_gain is not None:
         summary.append(illum_info.replace('Illumination correction', 'Illum correction'))
-        summary.append('  gain: ' + ', '.join(f'S{i+1} x{f:.2f}' for i, f in enumerate(illum_factors)))
+        summary.append('  gain: ' + ', '.join(f'{roi_label(i, True)} x{f:.2f}' for i, f in enumerate(illum_factors)))
     else:
         summary.append('Illum correction: OFF')
     summary.append(f"Blank: S{blank_idx + 1}(存 CSV 時各樣本扣除它的平均)" if blank_idx is not None else "Blank: 無")
@@ -2198,6 +2198,7 @@ def on_start():
 
             exposure_entry.delete(0, tk.END)
             exposure_entry.insert(0, str(user_exposure_ms))
+            fps_input_entry.insert(0, "50")   # 上面清空了 FPS;相機模式不補回的話 Start 會一直是灰的
 
             apply_defaults_on_restart_camera()
 
@@ -3258,6 +3259,13 @@ def _save_slide_calibration(A):
         json.dump(allcal, f, ensure_ascii=False, indent=2)
 
 
+def roi_label(i, short=False):
+    """樣本名稱:依載玻片佈局放置時用格子名稱(T1~T8、M1~M3、B1~B8),否則用 Sample N / SN。"""
+    if slide_A is not None and cad_layout and len(cad_layout["wells"]) == len(rois) and 0 <= i < len(rois):
+        return cad_layout["wells"][i]["name"]
+    return f"S{i+1}" if short else f"Sample {i+1}"
+
+
 def rois_from_affine(layout, A, fill, shape):
     """佈局 + 仿射 → ROI 清單與診斷資訊(純計算)。info:每 mm 幾 px、x/y 比例、旋轉角度、超出影像的 ROI 數。"""
     sx, sy = float(np.hypot(*A[:, 0])), float(np.hypot(*A[:, 1]))   # 每 mm 幾 px(x、y 方向)
@@ -3487,7 +3495,7 @@ def _ask_concentrations(n):
     per_row = 2
     for i in range(n):
         r = 1 + i // per_row; c = (i % per_row) * 4
-        tk.Label(fa, text=f"S{i+1}:", bg="#2B2B2B", fg="#E0E0E0").grid(row=r, column=c, sticky="e", padx=(6, 2), pady=2)
+        tk.Label(fa, text=f"{roi_label(i, True)}:", bg="#2B2B2B", fg="#E0E0E0").grid(row=r, column=c, sticky="e", padx=(6, 2), pady=2)
         me = tk.Entry(fa, width=9); me.grid(row=r, column=c + 1, padx=2)
         tk.Label(fa, text="× 10^", bg="#2B2B2B", fg="#E0E0E0").grid(row=r, column=c + 2, sticky="e")
         ce = ttk.Combobox(fa, values=EXPS, width=5, state="readonly"); ce.set("-9"); ce.grid(row=r, column=c + 3, padx=(2, 6))
@@ -3500,7 +3508,7 @@ def _ask_concentrations(n):
     excl_vars = []
     for i in range(n):
         v = tk.BooleanVar(value=(i == blank_idx)); excl_vars.append(v)
-        tk.Checkbutton(fx, text=f"S{i+1}" + (" (blank)" if i == blank_idx else ""), variable=v,
+        tk.Checkbutton(fx, text=f"{roi_label(i, True)}" + (" (blank)" if i == blank_idx else ""), variable=v,
                        bg="#2B2B2B", fg="#E0E0E0", selectcolor="#2B2B2B",
                        activebackground="#2B2B2B").grid(row=i // 4, column=i % 4, sticky="w", padx=4)
     fx.pack(fill="x", padx=12, pady=6)
@@ -3555,7 +3563,7 @@ def _make_linearity_chart(means, csv_path, concs, mode, log_x=False, excl=()):
     """濃度-光強度線性圖:存 PNG 並彈窗預覽。
        excl:不參與統計的樣本(blank 等),畫成灰色點線、不進擬合;濃度 0 的樣本是正常資料點。
        log_x=True:X 軸取 log10(濃度),y vs log10(x) 半對數擬合;濃度 0 無法放上 log 軸,畫成虛線。"""
-    names = [f"S{i+1}" + (" (blank)" if i == blank_idx else "") for i in range(len(means))]
+    names = [f"{roi_label(i, True)}" + (" (blank)" if i == blank_idx else "") for i in range(len(means))]
     x_all = np.array(concs, dtype=float)
     y_all = np.array(means, dtype=float)
     inc = np.array([i not in excl for i in range(len(means))])
@@ -3645,7 +3653,7 @@ def save_csv():
     last_csv_dir = os.path.dirname(filename)
 
     STABLE_AFTER_SEC = 10
-    sample_cols    = [f"Sample {i+1}" for i in range(len(data))]
+    sample_cols    = [f"{roi_label(i)}" for i in range(len(data))]
     stable_indices = [idx for idx, t in enumerate(ts) if t > STABLE_AFTER_SEC]
     stable_count   = len(stable_indices)
 
@@ -3659,7 +3667,7 @@ def save_csv():
         dp = decimal_places if decimal_places is not None else 6
         data = [[round(x - bmean, dp) for x in v] for v in data]
         sample_cols[blank_idx] += " (blank)"
-        blank_note = f"Blank subtraction: Sample {blank_idx + 1} mean {bmean:.6g} subtracted from all samples"
+        blank_note = f"Blank subtraction: {roi_label(blank_idx)} mean {bmean:.6g} subtracted from all samples"
 
     means, stds, cvs, maxs, mins = [], [], [], [], []
     for values in data:
@@ -4286,7 +4294,7 @@ def initialize_plot_area(n):
     for i in range(n):
         fig = Figure(figsize=(5.5, 3.5), dpi=100)
         ax  = fig.add_subplot(111)
-        ax.set_title(f"Light intensity of Sample {i+1}")
+        ax.set_title(f"Light intensity of {roi_label(i)}")
         ax.set_xlabel("Time (s)"); ax.set_ylabel("Intensity"); ax.grid(True)
         fig.tight_layout()
         canvas = FigureCanvasTkAgg(fig, master=scrollable_frame)
@@ -4331,13 +4339,32 @@ def save_plot_image(fig):
     fig.savefig(filename)
     messagebox.showinfo("儲存成功 / Saved", f"圖表已儲存為 {filename}\nPlot saved as {filename}")
 
+_plot_pending = False
+
+def request_plot_update():
+    """分析執行緒每秒呼叫;上一次重畫還沒做完就不再排隊,避免 Tk 事件堆積造成畫面卡死。"""
+    global _plot_pending
+    if not _plot_pending:
+        _plot_pending = True
+        root.after(0, update_plots)
+
 def update_plots():
+    global _plot_pending
+    _plot_pending = False
+    n = len(timestamps)
+    # ponytail: 圖最多畫約 1500 點(CSV 仍是每秒完整資料);全畫的話量越久重畫越慢,約 6000 秒後畫面卡住
+    step = max(1, n // 1500)
     for i, values in enumerate(roi_data):
         ax = plot_axes[i]
-        ax.clear()
-        ax.plot(timestamps, values, marker='o')
-        ax.set_title(f"Light intensity of Sample {i+1}")
-        ax.set_xlabel("Time (s)"); ax.set_ylabel("Intensity"); ax.grid(True)
+        t, v = timestamps[:n:step], values[:n:step]
+        if not ax.lines:
+            ax.plot(t, v, marker='o')
+            ax.set_title(f"Light intensity of {roi_label(i)}")
+            ax.set_xlabel("Time (s)"); ax.set_ylabel("Intensity"); ax.grid(True)
+        else:
+            ax.lines[0].set_data(t, v)
+            ax.lines[0].set_marker('o' if step == 1 else '')
+            ax.relim(); ax.autoscale_view()
         ax.figure.tight_layout()
         plot_canvases[i].draw()
 
@@ -4386,9 +4413,9 @@ def update_display():
                 elif scale_pixels_per_unit is not None:
                     w_real = (x2 - x1) / scale_pixels_per_unit
                     h_real = (y2 - y1) / scale_pixels_per_unit
-                    txt = f"S{i+1}  {w_real:.2f}x{h_real:.2f} {scale_unit}"
+                    txt = f"{roi_label(i, True)}  {w_real:.2f}x{h_real:.2f} {scale_unit}"
                 else:
-                    txt = f"Sample {i+1}  ({x2-x1}x{y2-y1} px)"
+                    txt = f"{roi_label(i)}  ({x2-x1}x{y2-y1} px)"
                 if _gp is not None:
                     txt += f" {_gp:.0f}%" if well_names else f"  glint {_gp:.1f}%"
                 if illum_gain is not None and i < len(illum_factors):
@@ -4410,9 +4437,9 @@ def update_display():
                     txt = well_names[i]
                 elif scale_pixels_per_unit is not None:
                     d_real = (rad * 2) / scale_pixels_per_unit
-                    txt = f"S{i+1}  Dia {d_real:.2f} {scale_unit}"
+                    txt = f"{roi_label(i, True)}  Dia {d_real:.2f} {scale_unit}"
                 else:
-                    txt = f"Sample {i+1}  (Dia {rad*2} px)"
+                    txt = f"{roi_label(i)}  (Dia {rad*2} px)"
                 if _gp is not None:
                     txt += f" {_gp:.0f}%" if well_names else f"  glint {_gp:.1f}%"
                 if illum_gain is not None and i < len(illum_factors):
@@ -4781,9 +4808,9 @@ def analysis_loop():
                 if median_filter_enabled and i < len(median_last_ratio):
                     mf_str = f"  (median fixed {median_last_ratio[i]:.2f}%)"
 
-                log_message += f"At {elapsed} sec, Sample {i+1}{roi_size_str} = {rounded}{mf_str}\n"
+                log_message += f"At {elapsed} sec, {roi_label(i)}{roi_size_str} = {rounded}{mf_str}\n"
             timestamps.append(elapsed)
-            root.after(0, update_plots)
+            request_plot_update()
             root.after(0, append_log, log_message.strip())
             last_logged_sec = elapsed
 
